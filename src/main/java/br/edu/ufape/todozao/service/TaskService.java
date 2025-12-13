@@ -35,10 +35,6 @@ public class TaskService {
         return saved;
     }
 
-    public Task saveTestTask(Task task) {
-        return taskRepository.save(task);
-    }
-
 }
 
 

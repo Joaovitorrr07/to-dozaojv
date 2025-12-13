@@ -24,18 +24,6 @@ public class TaskController {
     public Task changeStatus(@PathVariable Long id, @RequestBody ChangeStatusRequest request){
         return taskService.changeStatus(id, request.newStatus, request.notes);
     }
-
-    @PostMapping("/test")
-    public Task createTestTask() {
-        Task task = Task.builder()
-                .title("Task de teste")
-                .description("Criada apenas para teste do fluxo")
-                .status(TaskStatus.PENDING)
-                .build();
-
-        return taskService.saveTestTask(task);
-    }
-
 }
 
 
