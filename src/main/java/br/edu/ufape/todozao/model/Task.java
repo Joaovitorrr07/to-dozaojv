@@ -25,9 +25,14 @@ public class Task {
     private String color;
     private String priority;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status")
+    private TaskStatus status;
+
     @Column(name = "due_date")
     private String dueDate;
 
+    @Column(name = "task_type")
     private String type;
 
     @Column(name = "reset_rule")

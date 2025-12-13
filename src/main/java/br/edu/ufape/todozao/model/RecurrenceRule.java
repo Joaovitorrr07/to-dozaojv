@@ -18,6 +18,7 @@ public class RecurrenceRule {
     @Column(name = "recurrence_type")
     private String recurrenceType; // diariamente, semanalmente ou mensalmente...
 
+    @Column(name = "interval_value")
     private int interval;
 
     @Column(name = "end_date")
