@@ -5,6 +5,9 @@ import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
+import br.edu.ufape.todozao.dto.TaskTagCreateDTO;
+import br.edu.ufape.todozao.model.Tag;
+import br.edu.ufape.todozao.model.Task;
 import br.edu.ufape.todozao.model.TaskTag;
 import br.edu.ufape.todozao.service.TaskTagService;
 
@@ -18,20 +21,21 @@ public class TaskTagController {
         this.service = service;
     }
 
-    @GetMapping
-    public List<TaskTag> listar() {
-        return service.listarTodos();
-    }
-
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public TaskTag criar(@RequestBody TaskTag taskTag) {
-        return service.salvar(taskTag);
-    }
+    public void criar(@RequestBody TaskTagCreateDTO dto) {
 
-    @DeleteMapping("/{id}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void remover(@PathVariable Long id) {
-        service.remover(id);
+        Task task = new Task();
+        task.setId(dto.getTaskId());
+
+        Tag tag = new Tag();
+        tag.setId(dto.getTagId());
+
+        TaskTag taskTag = TaskTag.builder()
+                .task(task)
+                .tag(tag)
+                .build();
+
+        service.salvar(taskTag);
     }
 }
