@@ -1,6 +1,8 @@
 package br.edu.ufape.todozao.model;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
 import lombok.*;
 
 @Entity
@@ -18,7 +20,10 @@ public class RecurrenceRule {
     @Column(name = "recurrence_type")
     private String recurrenceType; // diariamente, semanalmente ou mensalmente...
 
-    private int interval;
+    @Min(value = 1, message = "O intervalo deve ser maior que zero")
+    @NotNull(message = "O intervalo é obrigatório")
+    @Column(name = "interval_value")
+    private Integer interval;
 
     @Column(name = "end_date")
     private String endDate;

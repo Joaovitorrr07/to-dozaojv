@@ -4,29 +4,23 @@ import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
-@Table(name = "task_dependencies")
-@Data
+@Getter
+@Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@Table(name = "task_dependencies")
 public class TaskDependency {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "created_at")
-    private String createdAt;
-
-    // A TAREFA QUE DEPENDE DE OUTRA
-
-    @ManyToOne
+    @ManyToOne(optional = false)
     @JoinColumn(name = "task_id")
     private Task task;
 
-    // A TAREFA DA QUAL A OUTRA DEPENDE
-
-    @ManyToOne
+    @ManyToOne(optional = false)
     @JoinColumn(name = "depends_on_task_id")
     private Task dependsOn;
 }
