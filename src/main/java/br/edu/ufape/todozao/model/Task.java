@@ -27,7 +27,8 @@ public class Task {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private TaskStatus taskStatus;
+    @Builder.Default
+    private TaskStatus taskStatus = TaskStatus.PENDING;
 
 
     @Column(name = "due_date")

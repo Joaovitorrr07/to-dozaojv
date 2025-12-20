@@ -1,71 +1,132 @@
 package br.edu.ufape.todozao.service;
 
-import br.edu.ufape.todozao.dto.TaskCreateDTO;
-import br.edu.ufape.todozao.exception.*;
-import br.edu.ufape.todozao.model.Project;
+import br.edu.ufape.todozao.dto.TaskDTO;
 import br.edu.ufape.todozao.model.Task;
 import br.edu.ufape.todozao.model.TaskStatus;
-import br.edu.ufape.todozao.model.User;
-import br.edu.ufape.todozao.repository.ProjectRepository;
 import br.edu.ufape.todozao.repository.TaskRepository;
 import br.edu.ufape.todozao.repository.UserRepository;
+import br.edu.ufape.todozao.repository.ProjectRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
+@Transactional
 public class TaskService {
 
-    private final TaskRepository taskRepository;
-    private final UserRepository userRepository;
-    private final ProjectRepository projectRepository;
+    @Autowired
+    private TaskRepository taskRepository;
 
-    public TaskService(TaskRepository taskRepository,
-                       UserRepository userRepository,
-                       ProjectRepository projectRepository) {
-        this.taskRepository = taskRepository;
-        this.userRepository = userRepository;
-        this.projectRepository = projectRepository;
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private ProjectRepository projectRepository;
+
+    public TaskDTO createTask(TaskDTO taskDTO) {
+        Task task = new Task();
+        task.setTitle(taskDTO.getTitle());
+        task.setDescription(taskDTO.getDescription());
+        task.setColor(taskDTO.getColor());
+        task.setPriority(taskDTO.getPriority());
+        task.setDueDate(taskDTO.getDueDate());
+        task.setType(taskDTO.getType());
+        task.setResetRule(taskDTO.getResetRule());
+        task.setTaskStatus(TaskStatus.PENDING);
+
+        if (taskDTO.getUserId() != null) {
+            task.setUser(userRepository.findById(taskDTO.getUserId()).orElse(null));
+        }
+
+        if (taskDTO.getProjectId() != null) {
+            task.setProject(projectRepository.findById(taskDTO.getProjectId()).orElse(null));
+        }
+
+        Task savedTask = taskRepository.save(task);
+        return convertToDTO(savedTask);
     }
 
-    // ✅ CASO DE USO
-    public Task criarTask(TaskCreateDTO dto) {
+    public TaskDTO updateTask(Long id, TaskDTO taskDTO) {
+        Task task = taskRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Task not found"));
 
-        // 1️⃣ validar invariantes cedo
-        User user = userRepository.findById(dto.getUserId())
-                .orElseThrow(() -> new UserNotFoundException(dto.getUserId()));
+        task.setTitle(taskDTO.getTitle());
+        task.setDescription(taskDTO.getDescription());
+        task.setColor(taskDTO.getColor());
+        task.setPriority(taskDTO.getPriority());
+        task.setDueDate(taskDTO.getDueDate());
+        task.setType(taskDTO.getType());
+        task.setResetRule(taskDTO.getResetRule());
 
-        // Converter String para enum TaskStatus
-        TaskStatus status;
-        if (dto.getStatus() != null && !dto.getStatus().isEmpty()) {
-            try {
-                status = TaskStatus.valueOf(dto.getStatus().toUpperCase());
-            } catch (IllegalArgumentException e) {
-                throw new InvalidTaskStatusException(dto.getStatus());
-            }
-        } else {
-            status = TaskStatus.PENDING; // Status padrão
+        if (taskDTO.getUserId() != null) {
+            task.setUser(userRepository.findById(taskDTO.getUserId()).orElse(null));
         }
 
-        Project project = null;
-        if (dto.getProjectId() != null) {
-            project = projectRepository.findById(dto.getProjectId())
-                    .orElseThrow(() -> new ProjectNotFoundException(dto.getProjectId()));
+        if (taskDTO.getProjectId() != null) {
+            task.setProject(projectRepository.findById(taskDTO.getProjectId()).orElse(null));
         }
 
-        // 2️⃣ idempotência simples
-        if (taskRepository.existsByTitleAndUserId(dto.getTitle(), user.getId())) {
-            throw new TaskDuplicateException("Task duplicada para esse usuário: " + dto.getTitle());
-        }
+        Task updatedTask = taskRepository.save(task);
+        return convertToDTO(updatedTask);
+    }
 
-        Task task = Task.builder()
-                .title(dto.getTitle())
-                .description(dto.getDescription())
-                .color(dto.getColor())
-                .priority(dto.getPriority())
-                .user(user)
-                .project(project)
-                .taskStatus(status)
+    public TaskDTO getTaskById(Long id) {
+        Task task = taskRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Task not found"));
+        return convertToDTO(task);
+    }
+
+    public List<TaskDTO> getAllTasks() {
+        return taskRepository.findAll()
+                .stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+    }
+
+    public List<TaskDTO> getTasksByUserId(Long userId) {
+        return taskRepository.findByUserId(userId)
+                .stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+    }
+
+    public List<TaskDTO> getTasksByProjectId(Long projectId) {
+        return taskRepository.findByProjectId(projectId)
+                .stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+    }
+
+    public void deleteTask(Long id) {
+        Task task = taskRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Task not found"));
+        taskRepository.delete(task);
+    }
+
+    public TaskDTO changeTaskStatus(Long id, TaskStatus taskStatus) {
+        Task task = taskRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Task not found"));
+        task.setTaskStatus(taskStatus);
+        Task updatedTask = taskRepository.save(task);
+        return convertToDTO(updatedTask);
+    }
+
+    private TaskDTO convertToDTO(Task task) {
+        return TaskDTO.builder()
+                .id(task.getId())
+                .title(task.getTitle())
+                .description(task.getDescription())
+                .color(task.getColor())
+                .priority(task.getPriority())
+                .taskStatus(task.getTaskStatus().toString())
+                .dueDate(task.getDueDate())
+                .type(task.getType())
+                .resetRule(task.getResetRule())
+                .userId(task.getUser() != null ? task.getUser().getId() : null)
+                .projectId(task.getProject() != null ? task.getProject().getId() : null)
                 .build();
-
-        return taskRepository.save(task);
     }
 }
