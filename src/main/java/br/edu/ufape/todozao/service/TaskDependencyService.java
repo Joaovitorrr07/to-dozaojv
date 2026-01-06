@@ -2,6 +2,7 @@ package br.edu.ufape.todozao.service;
 
 import java.util.List;
 
+import br.edu.ufape.todozao.exception.InvalidTaskDependencyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,20 +27,25 @@ public class TaskDependencyService {
     public TaskDependency adicionarDependencia(Task task, Task dependsOn) {
 
         if (task.getId().equals(dependsOn.getId())) {
-            throw new IllegalArgumentException("Uma task não pode depender dela mesma");
+            throw new InvalidTaskDependencyException(
+                    "Uma task não pode depender dela mesma"
+            );
         }
 
         if (repository.existsByTaskIdAndDependsOnId(task.getId(), dependsOn.getId())) {
-            throw new IllegalStateException("Dependência já existe");
+            throw new InvalidTaskDependencyException(
+                    "Dependência já existe"
+            );
         }
 
-        TaskDependency dependency = TaskDependency.builder()
-                .task(task)
-                .dependsOn(dependsOn)
-                .build();
-
-        return repository.save(dependency);
+        return repository.save(
+                TaskDependency.builder()
+                        .task(task)
+                        .dependsOn(dependsOn)
+                        .build()
+        );
     }
+
 
     @Transactional
     public void remover(Long id) {

@@ -2,6 +2,7 @@ package br.edu.ufape.todozao.service;
 
 import java.util.List;
 
+import br.edu.ufape.todozao.exception.TaskTagAlreadyExistsException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,15 +24,17 @@ public class TaskTagService {
 
     @Transactional
     public TaskTag salvar(TaskTag taskTag) {
-        Long taskId = taskTag.getTask().getId();
-        Long tagId = taskTag.getTag().getId();
 
-        if (repository.existsByTaskIdAndTagId(taskId, tagId)) {
-            throw new IllegalStateException("Tag já associada à task");
+        if (repository.existsByTaskIdAndTagId(
+                taskTag.getTask().getId(),
+                taskTag.getTag().getId())) {
+
+            throw new TaskTagAlreadyExistsException();
         }
 
         return repository.save(taskTag);
     }
+
 
     @Transactional
     public void remover(Long id) {

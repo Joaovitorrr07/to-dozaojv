@@ -1,5 +1,8 @@
 package br.edu.ufape.todozao.service;
 
+import br.edu.ufape.todozao.exception.TagAlreadyExistsException;
+import br.edu.ufape.todozao.exception.TagNotFoundException;
+import br.edu.ufape.todozao.exception.UnauthorizedTagAccessException;
 import br.edu.ufape.todozao.model.Tag;
 import br.edu.ufape.todozao.model.User;
 import br.edu.ufape.todozao.repository.TagRepository;
@@ -21,16 +24,16 @@ public class TagService {
     public Tag criarTag(String name, String color, User user) {
 
         if (tagRepository.existsByNameAndUserId(name, user.getId())) {
-            throw new IllegalArgumentException("Já existe uma tag com esse nome para o usuário");
+            throw new TagAlreadyExistsException();
         }
 
-        Tag tag = Tag.builder()
-                .name(name)
-                .color(color)
-                .user(user)
-                .build();
-
-        return tagRepository.save(tag);
+        return tagRepository.save(
+                Tag.builder()
+                        .name(name)
+                        .color(color)
+                        .user(user)
+                        .build()
+        );
     }
 
     public List<Tag> listarTagsDoUsuario(User user) {
@@ -41,12 +44,13 @@ public class TagService {
     public void deletarTag(Long tagId, User user) {
 
         Tag tag = tagRepository.findById(tagId)
-                .orElseThrow(() -> new IllegalArgumentException("Tag não encontrada"));
+                .orElseThrow(TagNotFoundException::new);
 
         if (!tag.getUser().getId().equals(user.getId())) {
-            throw new IllegalStateException("Usuário não pode remover essa tag");
+            throw new UnauthorizedTagAccessException();
         }
 
         tagRepository.delete(tag);
     }
+
 }
