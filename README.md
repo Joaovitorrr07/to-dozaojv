@@ -1,5 +1,11 @@
 ## 📚 Documentação do projeto
 
+## Equipe
+- Augusto Jorge Brandão Mendonça
+- João Vitor da Silva Moura
+- Nathan Edhuardo Cavalcanti dos Santos
+- Tayson Joel
+
 ### 📌 Visão Geral
 Projeto backend em Java/Spring Boot para gerenciar Tasks, com funcionalidades de histórico de alterações, subtasks, regras de recorrência e notificações. O código inclui camadas **Controller → Service → Repository**, DTOs para entrada/saída e tratamento centralizado de exceções.
 
