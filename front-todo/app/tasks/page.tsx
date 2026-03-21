@@ -16,7 +16,12 @@ import {
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
-type TaskStatusCode = "PENDING" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "OVERDUE";
+type TaskStatusCode =
+  | "PENDING"
+  | "IN_PROGRESS"
+  | "COMPLETED"
+  | "CANCELLED"
+  | "OVERDUE";
 
 type TagItem = {
   id: string;
@@ -32,6 +37,12 @@ type TaskItem = {
   tagId: string | null;
   syncStatus: "synced" | "pending" | "error";
   origin: "remote" | "local";
+};
+
+type TaskDependencyItem = {
+  id: number;
+  taskId: number;
+  dependsOnId: number;
 };
 
 type RemoteTag = {
@@ -57,13 +68,28 @@ type RemoteTask = {
   tag?: RemoteTag | null;
 };
 
-type RemoteCollection<T> = T[] | { data?: T[]; items?: T[]; content?: T[]; tasks?: T[]; tags?: T[] };
+type RemoteTaskDependency = {
+  id?: number;
+  taskId?: number;
+  dependsOnId?: number;
+};
+
+type RemoteCollection<T> =
+  | T[]
+  | {
+      data?: T[];
+      items?: T[];
+      content?: T[];
+      tasks?: T[];
+      tags?: T[];
+    };
 
 type TaskDraft = {
   title: string;
   description: string;
   taskStatus: TaskStatusCode;
   tagId: string;
+  dependencyIds: string[];
 };
 
 const TASK_TITLE_MAX_LENGTH = 50;
@@ -83,12 +109,13 @@ function getCountLabel(count: number, singular: string, plural: string) {
 
 function parseHexColor(hexColor: string) {
   const normalized = hexColor.replace("#", "");
-  const expanded = normalized.length === 3
-    ? normalized
-        .split("")
-        .map((character) => `${character}${character}`)
-        .join("")
-    : normalized;
+  const expanded =
+    normalized.length === 3
+      ? normalized
+          .split("")
+          .map((character) => `${character}${character}`)
+          .join("")
+      : normalized;
 
   if (!/^[0-9a-fA-F]{6}$/.test(expanded)) {
     return null;
@@ -118,7 +145,8 @@ function getContrastingTextColor(hexColor: string) {
     return "#17324f";
   }
 
-  const brightness = (parsed.red * 299 + parsed.green * 587 + parsed.blue * 114) / 1000;
+  const brightness =
+    (parsed.red * 299 + parsed.green * 587 + parsed.blue * 114) / 1000;
 
   return brightness > 160 ? "#17324f" : "#f8fbff";
 }
@@ -126,7 +154,11 @@ function getContrastingTextColor(hexColor: string) {
 function getTagButtonStyle(color: string, isActive: boolean) {
   const parsed = parseHexColor(color);
   const defaultTextColor = "#17324f";
-  const textColor = parsed ? (getContrastingTextColor(color) === "#f8fbff" ? defaultTextColor : color) : defaultTextColor;
+  const textColor = parsed
+    ? getContrastingTextColor(color) === "#f8fbff"
+      ? defaultTextColor
+      : color
+    : defaultTextColor;
 
   return {
     backgroundColor: isActive ? toRgba(color, 0.24) : toRgba(color, 0.14),
@@ -153,17 +185,32 @@ function getCollectionItems<T>(payload: RemoteCollection<T>): T[] {
     return payload;
   }
 
-  return payload.data || payload.items || payload.content || payload.tasks || payload.tags || [];
+  return (
+    payload.data ||
+    payload.items ||
+    payload.content ||
+    payload.tasks ||
+    payload.tags ||
+    []
+  );
 }
 
 function normalizeStatusValue(status?: string | null): TaskStatusCode {
   const value = (status || "").trim().toUpperCase();
 
-  if (value === "IN_PROGRESS" || value === "EM_ANDAMENTO" || value === "EM ANDAMENTO") {
+  if (
+    value === "IN_PROGRESS" ||
+    value === "EM_ANDAMENTO" ||
+    value === "EM ANDAMENTO"
+  ) {
     return "IN_PROGRESS";
   }
 
-  if (value === "COMPLETED" || value === "CONCLUIDA" || value === "CONCLUÍDA") {
+  if (
+    value === "COMPLETED" ||
+    value === "CONCLUIDA" ||
+    value === "CONCLUÍDA"
+  ) {
     return "COMPLETED";
   }
 
@@ -179,7 +226,9 @@ function normalizeStatusValue(status?: string | null): TaskStatusCode {
 }
 
 function getStatusLabel(status: TaskStatusCode) {
-  return statusOptions.find((option) => option.value === status)?.label ?? "Pendente";
+  return (
+    statusOptions.find((option) => option.value === status)?.label ?? "Pendente"
+  );
 }
 
 function getStatusChipClass(status: TaskStatusCode) {
@@ -216,11 +265,13 @@ function normalizeTask(task: RemoteTask, fallbackTagId: string | null): TaskItem
     return null;
   }
 
-  const rawTagId = typeof task.tagId === "string" || typeof task.tagId === "number"
-    ? String(task.tagId)
-    : task.tag && (typeof task.tag.id === "string" || typeof task.tag.id === "number")
-      ? String(task.tag.id)
-      : fallbackTagId;
+  const rawTagId =
+    typeof task.tagId === "string" || typeof task.tagId === "number"
+      ? String(task.tagId)
+      : task.tag &&
+          (typeof task.tag.id === "string" || typeof task.tag.id === "number")
+        ? String(task.tag.id)
+        : fallbackTagId;
 
   return {
     id: task.id,
@@ -238,12 +289,17 @@ async function readJsonResponse<T>(response: Response): Promise<T | null> {
   return text ? (JSON.parse(text) as T) : null;
 }
 
-function buildTaskDraft(task: TaskItem, fallbackTagId: string) {
+function buildTaskDraft(
+  task: TaskItem,
+  fallbackTagId: string,
+  dependencyIds: string[],
+): TaskDraft {
   return {
     title: task.title,
     description: task.description,
     taskStatus: task.taskStatus,
     tagId: task.tagId || fallbackTagId,
+    dependencyIds,
   };
 }
 
@@ -254,7 +310,12 @@ function toRemoteTagPayload(tag: TagItem) {
   };
 }
 
-function toTaskPayload(task: { title: string; description: string; taskStatus: TaskStatusCode; tagId: string | null }) {
+function toTaskPayload(task: {
+  title: string;
+  description: string;
+  taskStatus: TaskStatusCode;
+  tagId: string | null;
+}) {
   return {
     title: task.title,
     description: task.description,
@@ -287,11 +348,14 @@ export default function TasksPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [selectedTagId, setSelectedTagId] = useState<string>("");
+  const [selectedDependencyIds, setSelectedDependencyIds] = useState<string[]>([]);
   const [tagName, setTagName] = useState("");
   const [tagColor, setTagColor] = useState("#5b9bd5");
   const [loading, setLoading] = useState(true);
   const [saveState, setSaveState] = useState<"idle" | "saving">("idle");
-  const [message, setMessage] = useState("Crie tarefas, organize por tags e acompanhe sua lista em um unico painel.");
+  const [message, setMessage] = useState(
+    "Crie tarefas, organize por tags e acompanhe sua lista em um unico painel.",
+  );
   const [isTagModalOpen, setIsTagModalOpen] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<number | null>(null);
   const [editDraft, setEditDraft] = useState<TaskDraft | null>(null);
@@ -299,8 +363,15 @@ export default function TasksPage() {
   const [tagFilter, setTagFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [syncedTagIds, setSyncedTagIds] = useState<string[]>([]);
-  const [createFieldErrors, setCreateFieldErrors] = useState<Partial<Record<keyof TaskDraft, string>>>({});
-  const [editFieldErrors, setEditFieldErrors] = useState<Partial<Record<keyof TaskDraft, string>>>({});
+  const [taskDependenciesByTaskId, setTaskDependenciesByTaskId] = useState<
+    Record<number, TaskDependencyItem[]>
+  >({});
+  const [createFieldErrors, setCreateFieldErrors] = useState<
+    Partial<Record<keyof TaskDraft, string>>
+  >({});
+  const [editFieldErrors, setEditFieldErrors] = useState<
+    Partial<Record<keyof TaskDraft, string>>
+  >({});
 
   useEffect(() => {
     const loadRemoteData = async () => {
@@ -313,24 +384,45 @@ export default function TasksPage() {
         let remoteTags: TagItem[] = [];
 
         if (tagsResponse.ok) {
-          const tagPayload = await readJsonResponse<RemoteCollection<RemoteTag>>(tagsResponse);
-          remoteTags = getCollectionItems(tagPayload || []).map(normalizeTag).filter((tag): tag is TagItem => tag !== null);
+          const tagPayload =
+            await readJsonResponse<RemoteCollection<RemoteTag>>(tagsResponse);
+
+          remoteTags = getCollectionItems(tagPayload || [])
+            .map(normalizeTag)
+            .filter((tag): tag is TagItem => tag !== null);
+
           setTags(remoteTags);
           setSyncedTagIds(remoteTags.map((tag) => tag.id));
         }
 
         if (!tasksResponse.ok) {
           setTasks([]);
-          setMessage("Nao foi possivel carregar suas tasks agora. Tente novamente em instantes.");
+          setMessage(
+            "Nao foi possivel carregar suas tasks agora. Tente novamente em instantes.",
+          );
           setLoading(false);
           return;
         }
 
-        const taskPayload = await readJsonResponse<RemoteCollection<RemoteTask>>(tasksResponse);
+        const taskPayload =
+          await readJsonResponse<RemoteCollection<RemoteTask>>(tasksResponse);
+
         const normalizedTasks = getCollectionItems(taskPayload || [])
           .map((task) => normalizeTask(task, null))
-          .filter((task): task is TaskItem => task !== null);
+          .filter((task: TaskItem | null): task is TaskItem => task !== null);
 
+        const dependencyEntries = await Promise.all(
+          normalizedTasks.map(async (task: TaskItem) => {
+            try {
+              const dependencies = await loadTaskDependencies(task.id);
+              return [task.id, dependencies] as const;
+            } catch {
+              return [task.id, []] as const;
+            }
+          }),
+        );
+
+        setTaskDependenciesByTaskId(Object.fromEntries(dependencyEntries));
         setTasks(normalizedTasks);
         setMessage(
           remoteTags.length > 0
@@ -341,7 +433,10 @@ export default function TasksPage() {
         console.error("Falha ao carregar tags e tasks.", error);
         setTasks([]);
         setTags([]);
-        setMessage("Sem conexao com a API no momento. Suas tasks nao puderam ser carregadas.");
+        setTaskDependenciesByTaskId({});
+        setMessage(
+          "Sem conexao com a API no momento. Suas tasks nao puderam ser carregadas.",
+        );
       } finally {
         setLoading(false);
       }
@@ -357,14 +452,17 @@ export default function TasksPage() {
     () =>
       tasks.filter((task) => {
         const matchesTag = tagFilter === "all" || task.tagId === tagFilter;
-        const matchesStatus = statusFilter === "all" || task.taskStatus === statusFilter;
+        const matchesStatus =
+          statusFilter === "all" || task.taskStatus === statusFilter;
 
         return matchesTag && matchesStatus;
       }),
     [statusFilter, tagFilter, tasks],
   );
+
   const isTaskListEmpty = !loading && tasks.length === 0;
-  const hasNoFilteredResults = !loading && tasks.length > 0 && filteredTasks.length === 0;
+  const hasNoFilteredResults =
+    !loading && tasks.length > 0 && filteredTasks.length === 0;
 
   const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -378,7 +476,6 @@ export default function TasksPage() {
     }
 
     setCreateFieldErrors({});
-
     setSaveState("saving");
 
     const canSyncRemotely = !selectedTagId || syncedTagIds.includes(selectedTagId);
@@ -404,19 +501,43 @@ export default function TasksPage() {
 
       if (response.ok) {
         const remoteTask = await readJsonResponse<RemoteTask>(response);
-        const normalizedTask = remoteTask ? normalizeTask(remoteTask, draftTask.tagId) : null;
+        const normalizedTask = remoteTask
+          ? normalizeTask(remoteTask, draftTask.tagId)
+          : null;
 
         if (normalizedTask) {
+          const numericDependencyIds = selectedDependencyIds
+            .filter((value) => /^\d+$/.test(value))
+            .map(Number);
+
+          const createdDependencies = await syncTaskDependencies(
+            normalizedTask.id,
+            numericDependencyIds,
+            [],
+          );
+
           setTasks((current) => [...current, normalizedTask]);
+          setTaskDependenciesByTaskId((current) => ({
+            ...current,
+            [normalizedTask.id]: createdDependencies,
+          }));
         }
+
         setTitle("");
         setDescription("");
+        setSelectedDependencyIds([]);
         setCreateFieldErrors({});
         setMessage("Task criada com sucesso.");
       } else {
         const errorPayload = await readApiErrorResponse(response);
-        setCreateFieldErrors((errorPayload?.errors as Partial<Record<keyof TaskDraft, string>>) || {});
-        setMessage(errorPayload?.message || "Nao foi possivel criar a task agora. Verifique os dados e tente novamente.");
+        setCreateFieldErrors(
+          (errorPayload?.errors as Partial<Record<keyof TaskDraft, string>>) ||
+            {},
+        );
+        setMessage(
+          errorPayload?.message ||
+            "Nao foi possivel criar a task agora. Verifique os dados e tente novamente.",
+        );
       }
     } catch (error) {
       console.error("Falha ao criar task.", error);
@@ -434,7 +555,14 @@ export default function TasksPage() {
     }
 
     const previousTasks = tasks;
+    const previousDependencies = taskDependenciesByTaskId;
+
     setTasks((current) => current.filter((task) => task.id !== taskId));
+    setTaskDependenciesByTaskId((current) => {
+      const next = { ...current };
+      delete next[taskId];
+      return next;
+    });
 
     try {
       const response = await api(`/api/tasks/${taskId}`, {
@@ -443,6 +571,7 @@ export default function TasksPage() {
 
       if (!response.ok) {
         setTasks(previousTasks);
+        setTaskDependenciesByTaskId(previousDependencies);
         setMessage("Nao foi possivel excluir a task na API. Nada foi removido.");
         return;
       }
@@ -451,13 +580,20 @@ export default function TasksPage() {
     } catch (error) {
       console.error("Falha ao excluir task.", error);
       setTasks(previousTasks);
-      setMessage("A API nao respondeu ao excluir a task. A remocao foi revertida localmente.");
+      setTaskDependenciesByTaskId(previousDependencies);
+      setMessage(
+        "A API nao respondeu ao excluir a task. A remocao foi revertida localmente.",
+      );
     }
   };
 
   const handleStartEditTask = (task: TaskItem) => {
+    const dependencyIds = (taskDependenciesByTaskId[task.id] || []).map(
+      (dependency) => String(dependency.dependsOnId),
+    );
+
     setEditingTaskId(task.id);
-    setEditDraft(buildTaskDraft(task, tags[0]?.id ?? ""));
+    setEditDraft(buildTaskDraft(task, tags[0]?.id ?? "", dependencyIds));
     setEditFieldErrors({});
   };
 
@@ -483,14 +619,21 @@ export default function TasksPage() {
     setEditFieldErrors({});
 
     const previousTasks = tasks;
+    const previousDependencies = taskDependenciesByTaskId;
     const taskToUpdate = tasks.find((task) => task.id === taskId);
 
     if (!taskToUpdate) {
       return;
     }
 
-    if (editDraft.tagId && !syncedTagIds.includes(editDraft.tagId) && taskToUpdate.origin === "remote") {
-      setMessage("Essa tag ainda nao foi sincronizada com a API. Escolha uma tag remota ou salve a task apenas localmente.");
+    if (
+      editDraft.tagId &&
+      !syncedTagIds.includes(editDraft.tagId) &&
+      taskToUpdate.origin === "remote"
+    ) {
+      setMessage(
+        "Essa tag ainda nao foi sincronizada com a API. Escolha uma tag remota ou salve a task apenas localmente.",
+      );
       return;
     }
 
@@ -501,9 +644,12 @@ export default function TasksPage() {
       taskStatus: editDraft.taskStatus,
       tagId: editDraft.tagId || null,
       syncStatus: "pending",
+      origin: taskToUpdate.origin,
     };
 
-    setTasks((current) => current.map((task) => (task.id === taskId ? updatedTask : task)));
+    setTasks((current) =>
+      current.map((task) => (task.id === taskId ? updatedTask : task)),
+    );
 
     try {
       const response = await api(`/api/tasks/${taskId}`, {
@@ -513,22 +659,52 @@ export default function TasksPage() {
 
       if (!response.ok) {
         const errorPayload = await readApiErrorResponse(response);
-        setTasks(previousTasks.map((task) => (task.id === taskId ? { ...task, syncStatus: "error" } : task)));
+
+        setTasks(
+          previousTasks.map((task) =>
+            task.id === taskId ? { ...task, syncStatus: "error" } : task,
+          ),
+        );
 
         if (response.status === 400 && errorPayload?.errors) {
-          setEditFieldErrors(errorPayload.errors as Partial<Record<keyof TaskDraft, string>>);
+          setEditFieldErrors(
+            errorPayload.errors as Partial<Record<keyof TaskDraft, string>>,
+          );
         }
 
-        setMessage(errorPayload?.message || "Nao foi possivel salvar a edicao na API. As alteracoes foram revertidas.");
+        setMessage(
+          errorPayload?.message ||
+            "Nao foi possivel salvar a edicao na API. As alteracoes foram revertidas.",
+        );
         return;
       }
 
+      const numericDependencyIds = editDraft.dependencyIds
+        .filter((value) => /^\d+$/.test(value))
+        .map(Number);
+
+      const currentDependencies = taskDependenciesByTaskId[taskId] || [];
+      const updatedDependencies = await syncTaskDependencies(
+        taskId,
+        numericDependencyIds,
+        currentDependencies,
+      );
+
       const remoteTask = await readJsonResponse<RemoteTask>(response);
-      const normalizedTask = remoteTask ? normalizeTask(remoteTask, updatedTask.tagId) : null;
+      const normalizedTask = remoteTask
+        ? normalizeTask(remoteTask, updatedTask.tagId)
+        : null;
 
       if (normalizedTask) {
-        setTasks((current) => current.map((task) => (task.id === taskId ? normalizedTask : task)));
+        setTasks((current) =>
+          current.map((task) => (task.id === taskId ? normalizedTask : task)),
+        );
       }
+
+      setTaskDependenciesByTaskId((current) => ({
+        ...current,
+        [taskId]: updatedDependencies,
+      }));
 
       setMessage("Task atualizada com sucesso.");
       setEditingTaskId(null);
@@ -536,8 +712,15 @@ export default function TasksPage() {
       setEditFieldErrors({});
     } catch (error) {
       console.error("Falha ao salvar task.", error);
-      setTasks(previousTasks.map((task) => (task.id === taskId ? { ...task, syncStatus: "error" } : task)));
-      setMessage("A API nao respondeu ao tentar editar a task. As alteracoes foram revertidas.");
+      setTasks(
+        previousTasks.map((task) =>
+          task.id === taskId ? { ...task, syncStatus: "error" } : task,
+        ),
+      );
+      setTaskDependenciesByTaskId(previousDependencies);
+      setMessage(
+        "A API nao respondeu ao tentar editar a task. As alteracoes foram revertidas.",
+      );
     }
   };
 
@@ -565,7 +748,9 @@ export default function TasksPage() {
         color: tagColor,
       };
 
-      setTags((current) => current.map((tag) => (tag.id === editingTagId ? updatedTag : tag)));
+      setTags((current) =>
+        current.map((tag) => (tag.id === editingTagId ? updatedTag : tag)),
+      );
 
       try {
         const response = await api(`/api/tags/${editingTagId}`, {
@@ -575,7 +760,9 @@ export default function TasksPage() {
 
         if (!response.ok) {
           setTags(previousTags);
-          setMessage("Nao foi possivel atualizar a tag na API. As alteracoes foram revertidas.");
+          setMessage(
+            "Nao foi possivel atualizar a tag na API. As alteracoes foram revertidas.",
+          );
           return;
         }
 
@@ -583,14 +770,18 @@ export default function TasksPage() {
         const nextTag = remoteTag ? normalizeTag(remoteTag) : updatedTag;
 
         if (nextTag) {
-          setTags((current) => current.map((tag) => (tag.id === editingTagId ? nextTag : tag)));
+          setTags((current) =>
+            current.map((tag) => (tag.id === editingTagId ? nextTag : tag)),
+          );
         }
 
         setMessage(`Tag ${normalizedName} atualizada com sucesso.`);
       } catch (error) {
         console.error("Falha ao atualizar tag.", error);
         setTags(previousTags);
-        setMessage("A API nao respondeu ao atualizar a tag. As alteracoes foram revertidas.");
+        setMessage(
+          "A API nao respondeu ao atualizar a tag. As alteracoes foram revertidas.",
+        );
         return;
       }
     } else {
@@ -611,7 +802,10 @@ export default function TasksPage() {
           const nextTag = remoteTag ? normalizeTag(remoteTag) : localTag;
 
           if (nextTag) {
-            setTags((current) => [nextTag, ...current.filter((tag) => tag.id !== nextTag.id)]);
+            setTags((current) => [
+              nextTag,
+              ...current.filter((tag) => tag.id !== nextTag.id),
+            ]);
             setSelectedTagId(nextTag.id);
             setSyncedTagIds((current) => Array.from(new Set([...current, nextTag.id])));
             setMessage(`Tag ${nextTag.name} criada e sincronizada com a API.`);
@@ -621,7 +815,9 @@ export default function TasksPage() {
         }
       } catch (error) {
         console.error("Falha ao criar tag.", error);
-        setMessage(`Sem conexao com a API no momento. A tag ${normalizedName} nao foi criada.`);
+        setMessage(
+          `Sem conexao com a API no momento. A tag ${normalizedName} nao foi criada.`,
+        );
       }
     }
 
@@ -657,7 +853,11 @@ export default function TasksPage() {
     const fallbackTagId = tags.find((tag) => tag.id !== tagId)?.id ?? "";
 
     setTags((current) => current.filter((tag) => tag.id !== tagId));
-    setTasks((current) => current.map((task) => (task.tagId === tagId ? { ...task, tagId: null } : task)));
+    setTasks((current) =>
+      current.map((task) =>
+        task.tagId === tagId ? { ...task, tagId: null } : task,
+      ),
+    );
 
     if (selectedTagId === tagId) {
       setSelectedTagId(fallbackTagId);
@@ -673,10 +873,14 @@ export default function TasksPage() {
       if (!response.ok) {
         setTags(previousTags);
         setTasks(previousTasks);
+
         if (selectedTagId === fallbackTagId) {
           setSelectedTagId(tagId);
         }
-        setMessage("Nao foi possivel excluir a tag na API. As alteracoes foram revertidas.");
+
+        setMessage(
+          "Nao foi possivel excluir a tag na API. As alteracoes foram revertidas.",
+        );
         return;
       }
 
@@ -686,10 +890,14 @@ export default function TasksPage() {
       console.error("Falha ao excluir tag.", error);
       setTags(previousTags);
       setTasks(previousTasks);
+
       if (selectedTagId === fallbackTagId) {
         setSelectedTagId(tagId);
       }
-      setMessage("A API nao respondeu ao excluir a tag. As alteracoes foram revertidas.");
+
+      setMessage(
+        "A API nao respondeu ao excluir a tag. As alteracoes foram revertidas.",
+      );
     }
   };
 
@@ -703,6 +911,31 @@ export default function TasksPage() {
     setEditingTagId(null);
     setTagName("");
     setTagColor("#5b9bd5");
+  };
+
+    const toggleDependencySelection = (
+    dependencyId: string,
+    mode: "create" | "edit",
+  ) => {
+    if (mode === "create") {
+      setSelectedDependencyIds((current) =>
+        current.includes(dependencyId)
+          ? current.filter((id) => id !== dependencyId)
+          : [...current, dependencyId],
+      );
+      return;
+    }
+
+    setEditDraft((current) =>
+      current
+        ? {
+            ...current,
+            dependencyIds: current.dependencyIds.includes(dependencyId)
+              ? current.dependencyIds.filter((id) => id !== dependencyId)
+              : [...current.dependencyIds, dependencyId],
+          }
+        : current,
+    );
   };
 
   return (
@@ -725,7 +958,9 @@ export default function TasksPage() {
                 <p className="eyebrow tasks-eyebrow">VISÃO GERAL</p>
                 <h3 className="panel-title">Resumo das tasks</h3>
               </div>
-              <span className="profile-badge">{getCountLabel(tasks.length, "item", "itens")}</span>
+              <span className="profile-badge">
+                {getCountLabel(tasks.length, "item", "itens")}
+              </span>
             </div>
 
             <div className="tasks-kpi-grid section-spacer">
@@ -759,7 +994,11 @@ export default function TasksPage() {
             </div>
 
             <div className="tasks-tag-list section-spacer">
-              {tags.length === 0 ? <p className="panel-subtitle">Crie sua primeira tag para classificar as tasks.</p> : null}
+              {tags.length === 0 ? (
+                <p className="panel-subtitle">
+                  Crie sua primeira tag para classificar as tasks.
+                </p>
+              ) : null}
 
               {tags.map((tag) => (
                 <div key={tag.id} className="tasks-tag-item">
@@ -770,16 +1009,29 @@ export default function TasksPage() {
                     aria-pressed={tagFilter === tag.id}
                     style={getTagButtonStyle(tag.color, tagFilter === tag.id)}
                   >
-                    <span className="tasks-tag-dot" style={{ backgroundColor: tag.color }} />
+                    <span
+                      className="tasks-tag-dot"
+                      style={{ backgroundColor: tag.color }}
+                    />
                     <span>{tag.name}</span>
-                    {tagFilter === tag.id ? <span className="tasks-tag-active-badge">Ativa</span> : null}
+                    {tagFilter === tag.id ? (
+                      <span className="tasks-tag-active-badge">Ativa</span>
+                    ) : null}
                   </button>
 
                   <div className="tasks-tag-actions">
-                    <button type="button" className="ghost-button tasks-mini-button" onClick={() => handleStartEditTag(tag)}>
+                    <button
+                      type="button"
+                      className="ghost-button tasks-mini-button"
+                      onClick={() => handleStartEditTag(tag)}
+                    >
                       <PencilLine size={14} />
                     </button>
-                    <button type="button" className="danger-button tasks-mini-button" onClick={() => handleDeleteTag(tag.id)}>
+                    <button
+                      type="button"
+                      className="danger-button tasks-mini-button"
+                      onClick={() => handleDeleteTag(tag.id)}
+                    >
                       <Trash2 size={14} />
                     </button>
                   </div>
@@ -794,7 +1046,9 @@ export default function TasksPage() {
             <div>
               <p className="eyebrow tasks-eyebrow">Nova task</p>
               <h2 className="section-title">Criar e listar tarefas</h2>
-              <p className="panel-subtitle">Adicione uma task, vincule a uma tag e acompanhe tudo em formato de lista na mesma tela.</p>
+              <p className="panel-subtitle">
+                Adicione uma task, vincule a uma tag e acompanhe tudo em formato de lista na mesma tela.
+              </p>
             </div>
           </div>
 
@@ -845,6 +1099,71 @@ export default function TasksPage() {
               </label>
             </div>
 
+                        <label className="label">
+              Dependências
+              <div className="tasks-dependency-picker">
+                <div className="tasks-dependency-picker-header">
+                  <span className="panel-subtitle">
+                    {selectedDependencyIds.length === 0
+                      ? "Nenhuma dependência selecionada."
+                      : `${selectedDependencyIds.length} dependência${selectedDependencyIds.length > 1 ? "s" : ""} selecionada${selectedDependencyIds.length > 1 ? "s" : ""}.`}
+                  </span>
+
+                  {selectedDependencyIds.length > 0 ? (
+                    <button
+                      type="button"
+                      className="ghost-button tasks-clear-dependencies-button"
+                      onClick={() => setSelectedDependencyIds([])}
+                    >
+                      Limpar
+                    </button>
+                  ) : null}
+                </div>
+
+                {tasks.length === 0 ? (
+                  <div className="tasks-dependency-empty">
+                    Nenhuma task disponível para usar como dependência.
+                  </div>
+                ) : (
+                  <div className="tasks-dependency-list">
+                    {tasks.map((task) => {
+                      const dependencyId = String(task.id);
+                      const isChecked =
+                        selectedDependencyIds.includes(dependencyId);
+
+                      return (
+                        <label
+                          key={task.id}
+                          className={`tasks-dependency-option${isChecked ? " is-selected" : ""}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() =>
+                              toggleDependencySelection(dependencyId, "create")
+                            }
+                          />
+                          <span className="tasks-dependency-checkbox" />
+                          <span className="tasks-dependency-content">
+                            <span className="tasks-dependency-title">
+                              {task.title}
+                            </span>
+                            <span className="tasks-dependency-meta">
+                              {getStatusLabel(task.taskStatus)}
+                            </span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <span className="panel-subtitle">
+                  Você pode criar a task sem dependências.
+                </span>
+              </div>
+            </label>
+
             <label className="label">
               Descrição
               <textarea
@@ -854,7 +1173,10 @@ export default function TasksPage() {
                 onChange={(event) => {
                   setDescription(event.target.value.slice(0, TASK_DESCRIPTION_MAX_LENGTH));
                   if (createFieldErrors.description) {
-                    setCreateFieldErrors((current) => ({ ...current, description: undefined }));
+                    setCreateFieldErrors((current) => ({
+                      ...current,
+                      description: undefined,
+                    }));
                   }
                 }}
                 placeholder="Inclua contexto rapido para essa task."
@@ -869,7 +1191,8 @@ export default function TasksPage() {
               <button type="submit" className="primary-button" disabled={saveState === "saving"} aria-busy={saveState === "saving"}>
                 {saveState === "saving" ? (
                   <>
-                    <LoaderCircle size={16} className="button-spinner" /> Criando task...
+                    <LoaderCircle size={16} className="button-spinner" /> Criando
+                    task...
                   </>
                 ) : (
                   "Criar task"
@@ -881,7 +1204,11 @@ export default function TasksPage() {
           <div className="tasks-list-block section-spacer">
             <div className="panel-header compact-header">
               <h3 className="panel-title">Lista de tasks</h3>
-              {!loading ? <span className="profile-badge muted">{getCountLabel(filteredTasks.length, "visível", "visíveis")}</span> : null}
+              {!loading ? (
+                <span className="profile-badge muted">
+                  {getCountLabel(filteredTasks.length, "visível", "visíveis")}
+                </span>
+              ) : null}
             </div>
 
             <div className="tasks-filter-grid section-spacer">
@@ -889,7 +1216,11 @@ export default function TasksPage() {
                 Filtrar por tag
                 <div className="tasks-filter-field">
                   <Filter size={16} />
-                  <select className="input" value={tagFilter} onChange={(event) => setTagFilter(event.target.value)}>
+                  <select
+                    className="input"
+                    value={tagFilter}
+                    onChange={(event) => setTagFilter(event.target.value)}
+                  >
                     <option value="all">Todas as tags</option>
                     {tags.map((tag) => (
                       <option key={tag.id} value={tag.id}>
@@ -904,7 +1235,11 @@ export default function TasksPage() {
                 Filtrar por status
                 <div className="tasks-filter-field">
                   <CheckCircle2 size={16} />
-                  <select className="input" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+                  <select
+                    className="input"
+                    value={statusFilter}
+                    onChange={(event) => setStatusFilter(event.target.value)}
+                  >
                     <option value="all">Todos os status</option>
                     {statusOptions.map((status) => (
                       <option key={status.value} value={status.value}>
@@ -916,11 +1251,14 @@ export default function TasksPage() {
               </label>
             </div>
 
-            {loading ? <p className="panel-subtitle section-spacer">Carregando tarefas...</p> : null}
+            {loading ? (
+              <p className="panel-subtitle section-spacer">Carregando tarefas...</p>
+            ) : null}
 
             {isTaskListEmpty ? (
               <div className="tasks-empty-state section-spacer">
-                <Tag size={18} /> Nenhuma tarefa encontrada. Que tal criar sua primeira task?
+                <Tag size={18} /> Nenhuma tarefa encontrada. Que tal criar sua
+                primeira task?
               </div>
             ) : null}
 
@@ -935,9 +1273,18 @@ export default function TasksPage() {
                 {filteredTasks.map((task) => {
                   const linkedTag = task.tagId ? tagMap.get(task.tagId) : undefined;
                   const isEditing = editingTaskId === task.id && editDraft !== null;
+                  const dependencyItems = taskDependenciesByTaskId[task.id] || [];
+                  const dependencyTitles = dependencyItems
+                    .map((dependency) =>
+                      tasks.find((item) => item.id === dependency.dependsOnId)?.title,
+                    )
+                    .filter((value): value is string => Boolean(value));
 
                   return (
-                    <article key={task.id} className={`tasks-list-item${task.taskStatus === "COMPLETED" ? " is-completed" : ""}`}>
+                    <article
+                      key={task.id}
+                      className={`tasks-list-item${task.taskStatus === "COMPLETED" ? " is-completed" : ""}`}
+                    >
                       <div className="tasks-item-main">
                         {isEditing ? (
                           <div className="tasks-edit-form">
@@ -971,7 +1318,11 @@ export default function TasksPage() {
                                   onChange={(event) =>
                                     setEditDraft((current) =>
                                       current
-                                        ? { ...current, taskStatus: event.target.value as TaskStatusCode }
+                                        ? {
+                                            ...current,
+                                            taskStatus: event.target
+                                              .value as TaskStatusCode,
+                                          }
                                         : current,
                                     )
                                   }
@@ -1001,7 +1352,9 @@ export default function TasksPage() {
                                       )
                                     }
                                   >
-                                    <option value="">Selecione uma tag (opcional)</option>
+                                    <option value="">
+                                      Selecione uma tag (opcional)
+                                    </option>
                                     {tags.map((item) => (
                                       <option key={item.id} value={item.id}>
                                         {item.name}
@@ -1015,6 +1368,85 @@ export default function TasksPage() {
                                 </div>
                               </label>
                             </div>
+
+                                                        <label className="label">
+                              Dependências
+                              <div className="tasks-dependency-picker">
+                                <div className="tasks-dependency-picker-header">
+                                  <span className="panel-subtitle">
+                                    {editDraft.dependencyIds.length === 0
+                                      ? "Nenhuma dependência selecionada."
+                                      : `${editDraft.dependencyIds.length} dependência${editDraft.dependencyIds.length > 1 ? "s" : ""} selecionada${editDraft.dependencyIds.length > 1 ? "s" : ""}.`}
+                                  </span>
+
+                                  {editDraft.dependencyIds.length > 0 ? (
+                                    <button
+                                      type="button"
+                                      className="ghost-button tasks-clear-dependencies-button"
+                                      onClick={() =>
+                                        setEditDraft((current) =>
+                                          current
+                                            ? { ...current, dependencyIds: [] }
+                                            : current,
+                                        )
+                                      }
+                                    >
+                                      Limpar
+                                    </button>
+                                  ) : null}
+                                </div>
+
+                                {tasks.filter((item) => item.id !== task.id).length ===
+                                0 ? (
+                                  <div className="tasks-dependency-empty">
+                                    Nenhuma task disponível para usar como dependência.
+                                  </div>
+                                ) : (
+                                  <div className="tasks-dependency-list">
+                                    {tasks
+                                      .filter((item) => item.id !== task.id)
+                                      .map((item) => {
+                                        const dependencyId = String(item.id);
+                                        const isChecked =
+                                          editDraft.dependencyIds.includes(
+                                            dependencyId,
+                                          );
+
+                                        return (
+                                          <label
+                                            key={item.id}
+                                            className={`tasks-dependency-option${isChecked ? " is-selected" : ""}`}
+                                          >
+                                            <input
+                                              type="checkbox"
+                                              checked={isChecked}
+                                              onChange={() =>
+                                                toggleDependencySelection(
+                                                  dependencyId,
+                                                  "edit",
+                                                )
+                                              }
+                                            />
+                                            <span className="tasks-dependency-checkbox" />
+                                            <span className="tasks-dependency-content">
+                                              <span className="tasks-dependency-title">
+                                                {item.title}
+                                              </span>
+                                              <span className="tasks-dependency-meta">
+                                                {getStatusLabel(item.taskStatus)}
+                                              </span>
+                                            </span>
+                                          </label>
+                                        );
+                                      })}
+                                  </div>
+                                )}
+
+                                <span className="panel-subtitle">
+                                  Você pode salvar a task sem dependências.
+                                </span>
+                              </div>
+                            </label>
 
                             <label className="label">
                               Descrição
@@ -1040,18 +1472,33 @@ export default function TasksPage() {
                           <>
                             <div className="tasks-item-header">
                               <h3>{task.title}</h3>
-                              <span className={getStatusChipClass(task.taskStatus)}>{getStatusLabel(task.taskStatus)}</span>
+                              <span className={getStatusChipClass(task.taskStatus)}>
+                                {getStatusLabel(task.taskStatus)}
+                              </span>
                             </div>
+
                             <p>{task.description}</p>
+
+                            {dependencyTitles.length > 0 ? (
+                              <p className="panel-subtitle">
+                                Depende de: {dependencyTitles.join(", ")}
+                              </p>
+                            ) : null}
+
                             <div className="tasks-item-meta">
                               <span className="tasks-linked-tag">
                                 <span
                                   className="tasks-tag-dot"
-                                  style={{ backgroundColor: linkedTag?.color || "#8a9ab5" }}
+                                  style={{
+                                    backgroundColor:
+                                      linkedTag?.color || "#8a9ab5",
+                                  }}
                                 />
                                 {linkedTag?.name || "Sem tag"}
                               </span>
-                              <span className={`profile-badge muted tasks-sync-badge tasks-sync-badge-${task.syncStatus}`}>
+                              <span
+                                className={`profile-badge muted tasks-sync-badge tasks-sync-badge-${task.syncStatus}`}
+                              >
                                 {getSyncStatusLabel(task.syncStatus)}
                               </span>
                             </div>
@@ -1075,7 +1522,12 @@ export default function TasksPage() {
                               onClick={() => handleSaveTask(task.id)}
                               disabled={task.syncStatus === "pending"}
                             >
-                              {task.syncStatus === "pending" ? <LoaderCircle size={16} className="button-spinner" /> : <Save size={16} />} Salvar
+                              {task.syncStatus === "pending" ? (
+                                <LoaderCircle size={16} className="button-spinner" />
+                              ) : (
+                                <Save size={16} />
+                              )}{" "}
+                              Salvar
                             </button>
                           </>
                         ) : (
@@ -1107,7 +1559,11 @@ export default function TasksPage() {
       </div>
 
       {isTagModalOpen ? (
-        <div className="tasks-modal-backdrop" role="presentation" onClick={handleCloseTagModal}>
+        <div
+          className="tasks-modal-backdrop"
+          role="presentation"
+          onClick={handleCloseTagModal}
+        >
           <div
             className="tasks-modal"
             role="dialog"
@@ -1117,9 +1573,13 @@ export default function TasksPage() {
           >
             <div className="panel-header compact-header">
               <div>
-                <p className="eyebrow tasks-eyebrow">{editingTagId ? "Editar tag" : "Nova tag"}</p>
+                <p className="eyebrow tasks-eyebrow">
+                  {editingTagId ? "Editar tag" : "Nova tag"}
+                </p>
                 <h3 id="tag-modal-title" className="panel-title">
-                  {editingTagId ? "Atualizar tag existente" : "Criar tag para suas tasks"}
+                  {editingTagId
+                    ? "Atualizar tag existente"
+                    : "Criar tag para suas tasks"}
                 </h3>
               </div>
             </div>
@@ -1147,7 +1607,11 @@ export default function TasksPage() {
               </label>
 
               <div className="tasks-form-actions">
-                <button type="button" className="ghost-button" onClick={handleCloseTagModal}>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={handleCloseTagModal}
+                >
                   Cancelar
                 </button>
                 <button type="submit" className="primary-button">
